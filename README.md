@@ -1,5 +1,15 @@
 # Enterprise Knowledge Intelligence Assistant
 
+**[Open the live Streamlit assistant](https://sanchay-enterprise-knowledge-assistant.streamlit.app/)** — cited policy answers, document excerpts and synthetic revenue analysis. No installation, sign-in or API key required.
+
+**[Working Model and reviewer guide](Working%20Model.md)**
+
+## Streamlit interface
+
+The public demo runs the existing `eki.service.Service` directly inside Streamlit using a fixed synthetic corpus. It initializes local Qdrant, BM25 and read-only SQL analytics in temporary hosting storage. Browser sessions have separate conversation IDs. Public ingestion and uploads are disabled, and the public deployment uses hash-vector retrieval, lexical reranking and extractive answers, without an external LLM.
+
+Run this interface locally with `pip install -r requirements.txt`, then `python -m streamlit run streamlit_app.py`. Streamlit Community Cloud uses `streamlit_app.py` and Python 3.12. Temporary indexes and conversational state reset when the app restarts. The tokenizer vocabulary downloads on first startup.
+
 An evidence-first enterprise document assistant with **hybrid RAG, four deterministic LangGraph agents, source citations and a browser interface**. It answers questions over PDFs, Word files, CSVs and web documents, and combines approved SQL queries with document evidence for quarterly revenue analysis.
 
 **Independent portfolio project. All included business documents and revenue figures are synthetic.** This is a working, single-workspace reference implementation with deployment scaffolding, not a claim of production certification.

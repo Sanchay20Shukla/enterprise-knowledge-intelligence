@@ -4,6 +4,8 @@
 
 Reviewers can open the app directly without installing software, signing in or providing an API key. If the app has been put to sleep by hosting, allow it to wake up.
 
+![Live Enterprise Knowledge Assistant with cited revenue analysis](docs/images/live-streamlit.png)
+
 ## Try it
 
 1. In the sidebar, select **Revenue analysis** and click **Ask example**.

@@ -1,0 +1,44 @@
+name: Deploy to AWS (manual)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: aws-demo
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install -e '.[dev]'
+      - run: pytest -q && python scripts/evaluate.py
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - uses: aws-actions/amazon-ecr-login@v2
+        id: ecr
+      - name: Build and push immutable image
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          SHA: ${{ github.sha }}
+          REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+        run: |
+          docker build -t "$REGISTRY/$REPOSITORY:$SHA" .
+          docker push "$REGISTRY/$REPOSITORY:$SHA"
+      - name: Create demo infrastructure
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          SHA: ${{ github.sha }}
+          REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+          VPC: ${{ vars.AWS_VPC_ID }}
+          SUBNET: ${{ vars.AWS_SUBNET_ID }}
+          KEY_PARAMETER: ${{ vars.AWS_API_KEY_PARAMETER }}
+        run: |
+          aws cloudformation create-stack --stack-name "eki-${SHA:0:8}" \
+            --template-body file://infra/aws.yaml --capabilities CAPABILITY_IAM \
+            --parameters "ParameterKey=VpcId,ParameterValue=$VPC" "ParameterKey=SubnetId,ParameterValue=$SUBNET" \
+              "ParameterKey=ImageUri,ParameterValue=$REGISTRY/$REPOSITORY:$SHA" "ParameterKey=ApiKeyParameter,ParameterValue=$KEY_PARAMETER"
+          aws cloudformation wait stack-create-complete --stack-name "eki-${SHA:0:8}"

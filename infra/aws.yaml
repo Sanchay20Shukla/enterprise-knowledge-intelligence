@@ -1,0 +1,88 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Single-host EKI portfolio deployment; private access through SSM port forwarding.
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+  SubnetId:
+    Type: AWS::EC2::Subnet::Id
+    Description: Subnet with outbound internet access for ECR and model downloads.
+  ImageUri:
+    Type: String
+    Description: ECR image URI tagged with an immutable Git commit SHA.
+    AllowedPattern: '[0-9]{12}\.dkr\.ecr\.[a-z0-9-]+\.amazonaws\.com/[a-z0-9/_-]+:[a-f0-9]{40}'
+  ApiKeyParameter:
+    Type: String
+    Description: Existing SSM SecureString parameter name containing a strong API key.
+    AllowedPattern: '/[a-zA-Z0-9/_.-]+'
+  AmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
+Resources:
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: EKI no inbound ports; SSM-only access
+      VpcId: !Ref VpcId
+      SecurityGroupEgress:
+        - IpProtocol: '-1'
+          CidrIp: 0.0.0.0/0
+  Role:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: ec2.amazonaws.com}
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+      Policies:
+        - PolicyName: ReadApplicationKey
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: ssm:GetParameter
+                Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${ApiKeyParameter}'
+  Profile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles: [!Ref Role]
+  Host:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref AmiId
+      InstanceType: t3.large
+      IamInstanceProfile: !Ref Profile
+      SubnetId: !Ref SubnetId
+      SecurityGroupIds: [!Ref SecurityGroup]
+      MetadataOptions: {HttpTokens: required, HttpEndpoint: enabled}
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs: {VolumeSize: 30, VolumeType: gp3, Encrypted: true, DeleteOnTermination: false}
+      Tags:
+        - {Key: Name, Value: enterprise-knowledge-intelligence}
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -euo pipefail
+          dnf install -y docker
+          systemctl enable --now docker
+          install -d -m 700 /opt/eki
+          aws ssm get-parameter --name '${ApiKeyParameter}' --with-decryption --query Parameter.Value --output text --region '${AWS::Region}' > /opt/eki/key
+          chmod 600 /opt/eki/key
+          printf 'EKI_API_KEY=%s\nEKI_EMBEDDING=hash\nEKI_RERANKER=lexical\nEKI_GENERATOR=extractive\nEKI_QDRANT_URL=http://eki-qdrant:6333\nEKI_REDIS_URL=redis://eki-redis:6379/0\n' "$(cat /opt/eki/key)" > /opt/eki/app.env
+          chmod 600 /opt/eki/app.env
+          aws ecr get-login-password --region '${AWS::Region}' | docker login --username AWS --password-stdin '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com'
+          docker pull '${ImageUri}'
+          docker network create eki
+          docker run -d --name eki-qdrant --network eki --restart unless-stopped -v eki-qdrant:/qdrant/storage qdrant/qdrant:v1.16.3
+          docker run -d --name eki-redis --network eki --restart unless-stopped redis:7.4-alpine redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru
+          docker run -d --name eki-api --network eki --restart unless-stopped --env-file /opt/eki/app.env -p 127.0.0.1:8000:8000 -v eki-data:/app/data/runtime '${ImageUri}'
+Outputs:
+  InstanceId:
+    Value: !Ref Host
+  Access:
+    Value: Use AWS Systems Manager port forwarding from localhost:8000 to instance port 8000. No public endpoint is exposed.

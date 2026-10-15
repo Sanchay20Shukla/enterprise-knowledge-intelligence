@@ -1,0 +1,34 @@
+services:
+  api:
+    build: .
+    ports: ["127.0.0.1:8000:8000"]
+    environment:
+      EKI_API_KEY: ${EKI_API_KEY:?Set EKI_API_KEY in .env}
+      EKI_QDRANT_URL: http://qdrant:6333
+      EKI_REDIS_URL: redis://redis:6379/0
+      EKI_EMBEDDING: ${EKI_EMBEDDING:-hash}
+      EKI_RERANKER: ${EKI_RERANKER:-lexical}
+      EKI_GENERATOR: ${EKI_GENERATOR:-extractive}
+      EKI_LLM_MODEL: ${EKI_LLM_MODEL:-gpt-4.1-mini}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    volumes: ["app-data:/app/data/runtime", "models:/home/app/.cache"]
+    depends_on:
+      qdrant: {condition: service_started}
+      redis: {condition: service_healthy}
+    restart: unless-stopped
+  qdrant:
+    image: qdrant/qdrant:v1.16.3
+    volumes: ["qdrant-data:/qdrant/storage"]
+    restart: unless-stopped
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--maxmemory", "128mb", "--maxmemory-policy", "allkeys-lru"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 10
+    restart: unless-stopped
+volumes:
+  app-data:
+  qdrant-data:
+  models:

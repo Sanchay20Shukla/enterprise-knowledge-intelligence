@@ -1,0 +1,2 @@
+policy,description
+backup_retention,Backup retention is 35 days for operational databases; backup restoration is tested monthly.

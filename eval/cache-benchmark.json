@@ -1,0 +1,10 @@
+{
+  "backend": "bounded local TTL cache",
+  "mode": "hash/lexical/extractive",
+  "pairs": 30,
+  "median_miss_ms": 3.62,
+  "median_hit_ms": 0.10500000000000001,
+  "llm_calls": 0,
+  "measured_api_cost": 0,
+  "note": "No paid model calls. This measures local caching, not Redis network latency or paid-model savings."
+}

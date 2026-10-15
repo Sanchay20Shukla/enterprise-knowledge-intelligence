@@ -1,0 +1,1 @@
+Q2 revenue decreased compared with Q1. The business review attributes the decrease to delayed renewals in the enterprise segment and a temporary reduction in implementation services. These are management explanations, not independently proven causal estimates.
